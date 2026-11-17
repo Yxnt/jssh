@@ -1,0 +1,63 @@
+jumpserver:
+  api_url: "https://jumpserver.example.com"
+  ssh_host: "jumpserver.example.com"
+  ssh_port: 2222
+  ssh_username: "jumpserver_user"
+  # Private key for KoKo. Null uses OpenSSH defaults and ~/.ssh/config.
+  ssh_identity_file: null
+  # JumpServer 2.4.1 default org id is the string DEFAULT.
+  # Omit or set null to leave X-JMS-ORG unset.
+  org_id: DEFAULT
+
+auth:
+  type: access_key
+  access_key_env: JMS_AK
+  secret_key_env: JMS_SK
+  totp_env: JMS_TOTP_SECRET
+  totp_digits: 6
+  totp_period: 30
+  totp_algorithm: sha1
+  # Optional inline secrets. If any of these is set, chmod 600 this file.
+  # Environment variables still override these values.
+  # access_key: ""
+  # secret_key: ""
+  # totp_secret: ""
+  # Optional macOS Keychain service. jssh secrets keychain-set stores
+  # accounts access_key, secret_key, and totp_secret there if env vars are empty.
+  keychain_service: null
+  # Optional 1Password secret references, for example op://vault/item/ak
+  onepassword_ak: null
+  onepassword_sk: null
+  onepassword_totp: null
+
+search:
+  engine: fzf
+  cache_ttl: 600
+
+sftp:
+  # Used only when the API tree has no node path.
+  default_root: "Default"
+  # Map asset id, hostname, or "id:account" to a full SFTP path.
+  path_overrides: {}
+  # Used only when the system-users API returns nothing.
+  # Values must be names you already confirmed on JumpServer.
+  account_overrides: {}
+
+ssh:
+  interactive_fallback: true
+  totp_auto: true
+  # KoKo v2.4.1 keyboard-interactive question from pkg/auth/server.go
+  totp_prompts:
+    - "[MFA auth]:"
+  # Default when omitted. KoKo 2.4.1 still offers ssh-rsa host keys.
+  # options:
+  #   - HostKeyAlgorithms=+ssh-rsa
+  #   - PubkeyAcceptedAlgorithms=+ssh-rsa
+
+tls:
+  verify: true
+  # ca_bundle: /path/to/internal-ca.pem
+
+http:
+  timeout: 15
+  retries: 3

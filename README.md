@@ -1,0 +1,133 @@
+# jssh
+
+在终端里搜索你有权限的 JumpServer 2.4.1 资产，用 fzf 选中后走 KoKo 打开本机 `ssh` 或 `sftp`。
+
+用 Access Key HTTP Signature 调 REST API。不绕过 MFA、授权和审计。不用 JumpServer 3.x 的 `user@root@ip` 写法。
+
+## 安装
+
+```bash
+brew install fzf
+pipx install .
+```
+
+不用 pipx 时跑 `scripts/install.sh`。脚本会装包，并在缺少配置时把 `config.example.yaml` 拷到 `~/.config/jssh/config.yaml`，权限 `600`。
+
+## 配置
+
+编辑 `~/.config/jssh/config.yaml`：
+
+```yaml
+jumpserver:
+  api_url: "https://jumpserver.example.com"
+  ssh_host: "jumpserver.example.com"
+  ssh_port: 2222
+  ssh_username: "jumpserver_user"
+  ssh_identity_file: ~/.ssh/id_ed25519
+  org_id: DEFAULT
+```
+
+`ssh_identity_file` 为空时走 OpenSSH 默认和 `~/.ssh/config`。
+
+密钥按下面任一方式提供，环境变量优先：
+
+```yaml
+auth:
+  access_key: "你的AK"
+  secret_key: "你的SK"
+  totp_secret: "authenticator 的 base32 种子，不是 6 位验证码"
+```
+
+文件里写了密钥就必须：
+
+```bash
+chmod 600 ~/.config/jssh/config.yaml
+```
+
+权限是 644 时 jssh 会拒绝启动。`jssh config` 只显示是否配置了密钥，不打印值。不要把这份 YAML 提交或发给别人。
+
+也可以不写进 YAML：
+
+```bash
+export JMS_AK=...
+export JMS_SK=...
+export JMS_TOTP_SECRET=...
+jssh secrets totp-file          # 写到 ~/.config/jssh/totp，权限 0600
+jssh secrets keychain-set      # 藏式输入后写入 macOS Keychain
+```
+
+新 Warp 窗口不会继承另一个窗口里的 `export`。多窗口自动填 MFA 时，把种子放进配置或 totp 文件。
+
+## 使用
+
+```bash
+jssh doctor
+jssh
+```
+
+无参数时：搜主机名 / IP / 节点（含中文）→ 选系统账号 → 选 SFTP 或 SSH。SSH 或 SFTP 退出后回到资产列表。Esc 返回上一层。
+
+指定主机则跳过选择器：
+
+```bash
+jssh ssh sha-jumpserver-10.111.6.11 --account linux-root
+jssh sftp sha-jumpserver-10.111.6.11 --account linux-root
+jssh sftp --last
+```
+
+这类命令在会话结束后直接退出 jssh。
+
+SSH 连上后，在该会话里按 **Ctrl+F**（发给本机 jssh）。剪贴板里是：
+
+```bash
+jssh sftp <主机> --account <账号>
+```
+
+不含 TOTP。右上角会闪一句 `sftp copied`，约 2 秒后消失，不改 PS1。另开 Warp 窗口粘贴即可。当前 SSH 不用断。
+
+SSH 会自动填 KoKo 的 `[MFA auth]:`。口令仍需自己输入。选中资产后会把主机名和系统账号发给 KoKo，不再停在网关菜单上手输。
+
+SFTP 用本机交互式 `sftp`，不传 `-b`。`exit` 后还在原来的 shell。
+
+## 命令
+
+| 命令 | 作用 |
+|---|---|
+| `jssh` | 交互选择资产，再选 SFTP 或 SSH |
+| `jssh sftp [名称] [--account] [--last]` | 打开 SFTP |
+| `jssh ssh [名称] [--account] [--last]` | 经 KoKo 打开 SSH |
+| `jssh totp` | 打印当前 6 位 TOTP，不打印种子 |
+| `jssh sync` | 从 API 刷新有权限的资产 |
+| `jssh list` | 打印缓存 |
+| `jssh recent` | 打印最近连接 |
+| `jssh cache clear` | 删缓存 |
+| `jssh doctor` | 检查配置、fzf、ssh、sftp、密钥是否存在 |
+| `jssh doctor --probe` | 只读探测 profile 和资产接口 |
+| `jssh config` | 打印不含密钥的配置 |
+| `jssh secrets totp-file` | 把 TOTP 种子写入 0600 文件 |
+| `jssh secrets keychain-set` | 把 AK/SK/TOTP 写入 Keychain |
+
+缓存目录：`~/Library/Caches/jssh/`，默认 TTL 600 秒。过期缓存仍可连，但会提示授权可能已变。缓存不存 AK、SK、口令、MFA。
+
+## 常见问题
+
+| 现象 | 处理 |
+|---|---|
+| Config not found | 拷 `config.example.yaml` 到 `~/.config/jssh/config.yaml` |
+| 含密钥且 group/world 可读 | `chmod 600 ~/.config/jssh/config.yaml` |
+| Access key is missing | 写 `auth.access_key` / `auth.secret_key`，或导出 `JMS_AK` / `JMS_SK` |
+| TOTP secret is missing | 写 `auth.totp_secret`，或 `jssh secrets totp-file`，或 `JMS_TOTP_SECRET` |
+| 新窗口 MFA 填不上 | 不要只靠另一个窗口的 `export` |
+| HTTP 401 / 403 | 核对 AK/SK、时钟、`org_id` |
+| HTTP 404 | 接口按 2.4.1。跑 `jssh doctor --probe` |
+| 握手停在 host key | 默认已加 `ssh-rsa`。可在 `ssh.options` 覆盖 |
+| SFTP 路径不对 | 设 `sftp.path_overrides` |
+| 没有系统账号 | 在 JumpServer 确认名称后设 `sftp.account_overrides` |
+| fzf missing | `brew install fzf` |
+
+## 测试
+
+```bash
+python3 -m pip install -e ".[dev]"
+python3 -m pytest
+```
