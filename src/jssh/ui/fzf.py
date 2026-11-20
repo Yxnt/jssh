@@ -47,7 +47,7 @@ def pick_account(asset: Asset, accounts: list[Account]) -> Account | None:
     try:
         selected = _run(
             lines,
-            header=f"{asset.hostname}  |  Enter select  Esc back  Back for other hosts",
+            header=f"{asset.hostname}  |  Enter select  Esc back",
             nth="2..",
         )
     except Cancelled:
@@ -71,8 +71,11 @@ def pick_action(asset: Asset | None = None, account: Account | None = None) -> s
     ]
     header = "Choose action"
     if asset and account:
-        header = f"{asset.hostname} / {account.name}  |  Enter select  Esc exit  Back for other hosts"
-    selected = _run(lines, header=header, nth="2..")
+        header = f"{asset.hostname} / {account.name}  |  Enter select  Esc back"
+    try:
+        selected = _run(lines, header=header, nth="2..")
+    except Cancelled:
+        return "back"
     return selected.split("\t", 1)[0]
 
 

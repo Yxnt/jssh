@@ -69,8 +69,7 @@ def test_account_and_action_share_back_row(sample_asset, monkeypatch: pytest.Mon
 
     monkeypatch.setattr("jssh.ui.fzf._run", run)
     assert pick_account(sample_asset, accounts) is None
-    with pytest.raises(Cancelled):
-        pick_action(sample_asset, accounts[0])
+    assert pick_action(sample_asset, accounts[0]) == "back"
     assert seen[0][-1] == seen[1][-1] == "back\tBack"
 
 def test_connect_account_back_reopens_host_picker(
@@ -104,3 +103,83 @@ def test_connect_account_back_reopens_host_picker(
         _connect(tmp_cfg, None, None, None)
     assert picks.asset == 2
     assert picks.account == 2
+
+
+def test_pick_action_esc_is_back(sample_asset, sample_account, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("jssh.ui.fzf._run", lambda *_a, **_k: (_ for _ in ()).throw(Cancelled("cancelled")))
+    assert pick_action(sample_asset, sample_account) == "back"
+
+
+def test_action_back_returns_to_account_picker(
+    tmp_cfg,
+    sample_asset,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    accs = [
+        Account(id="acc-1", name="linux-root", username="root"),
+        Account(id="acc-2", name="linux-user", username="user"),
+    ]
+    picks = SimpleNamespace(asset=0, account=0, action=0)
+
+    def pick_asset(assets: list[Asset], recent=None) -> Asset:
+        picks.asset += 1
+        return sample_asset
+
+    def pick_account(asset: Asset, accounts: list[Account]) -> Account | None:
+        picks.account += 1
+        if picks.account == 2:
+            raise Cancelled("done")
+        return accounts[0]
+
+    def pick_action(asset: Asset, account: Account) -> str:
+        picks.action += 1
+        return "back"
+
+    monkeypatch.setattr("jssh.cli.pick_asset", pick_asset)
+    monkeypatch.setattr("jssh.cli.pick_account", pick_account)
+    monkeypatch.setattr("jssh.cli.pick_action", pick_action)
+    monkeypatch.setattr("jssh.cli.load_or_sync", lambda cfg: ([sample_asset], False))
+    monkeypatch.setattr("jssh.cli.accounts_for", lambda cfg, asset: accs)
+    monkeypatch.setattr("jssh.cli.load_recent", lambda cfg: [])
+
+    with pytest.raises(Cancelled, match="done"):
+        _connect(tmp_cfg, None, None, None)
+    assert picks.asset == 1
+    assert picks.account == 2
+    assert picks.action == 1
+
+
+def test_action_back_returns_to_hosts_when_one_account(
+    tmp_cfg,
+    sample_asset,
+    sample_account,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    picks = SimpleNamespace(asset=0, account=0, action=0)
+
+    def pick_asset(assets: list[Asset], recent=None) -> Asset:
+        picks.asset += 1
+        if picks.asset == 2:
+            raise Cancelled("done")
+        return sample_asset
+
+    def pick_account(asset: Asset, accounts: list[Account]) -> Account | None:
+        picks.account += 1
+        return sample_account
+
+    def pick_action(asset: Asset, account: Account) -> str:
+        picks.action += 1
+        return "back"
+
+    monkeypatch.setattr("jssh.cli.pick_asset", pick_asset)
+    monkeypatch.setattr("jssh.cli.pick_account", pick_account)
+    monkeypatch.setattr("jssh.cli.pick_action", pick_action)
+    monkeypatch.setattr("jssh.cli.load_or_sync", lambda cfg: ([sample_asset], False))
+    monkeypatch.setattr("jssh.cli.accounts_for", lambda cfg, asset: [sample_account])
+    monkeypatch.setattr("jssh.cli.load_recent", lambda cfg: [])
+
+    with pytest.raises(Cancelled, match="done"):
+        _connect(tmp_cfg, None, None, None)
+    assert picks.asset == 2
+    assert picks.account == 1
+    assert picks.action == 1

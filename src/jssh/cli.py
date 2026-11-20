@@ -261,34 +261,42 @@ def _connect(cfg: Config, action: str | None, query: str | None, account_name: s
             asset = matched[0]
         else:
             asset = pick_asset(matched, load_recent(cfg))
-        accounts = accounts_for(cfg, asset)
-        if account_name:
-            account = account_from_name(accounts, account_name)
-        else:
-            account = pick_account(asset, accounts)
-            if account is None:
-                query = None
-                account_name = None
-                continue
         while True:
-            chosen = action or pick_action(asset, account)
-            action = None
-            if chosen == "back":
-                query = None
+            accounts = accounts_for(cfg, asset)
+            if account_name:
+                account = account_from_name(accounts, account_name)
                 account_name = None
-                break
-            code = _run_action(cfg, chosen, asset, account)
-            if not sys.stdin.isatty():
-                return code
-            if chosen in {"copy-sftp", "copy-ssh"}:
-                continue
-            if chosen in {"ssh", "sftp"}:
-                if not resume_picker:
+                stacked_account = False
+            else:
+                stacked_account = len(accounts) > 1
+                account = pick_account(asset, accounts)
+                if account is None:
+                    query = None
+                    break
+            leave_asset = False
+            while True:
+                chosen = action or pick_action(asset, account)
+                action = None
+                if chosen == "back":
+                    if stacked_account:
+                        break
+                    leave_asset = True
+                    break
+                code = _run_action(cfg, chosen, asset, account)
+                if not sys.stdin.isatty():
                     return code
+                if chosen in {"copy-sftp", "copy-ssh"}:
+                    continue
+                if chosen in {"ssh", "sftp"}:
+                    if not resume_picker:
+                        return code
+                    leave_asset = True
+                    break
+                return code
+            if leave_asset:
                 query = None
                 account_name = None
                 break
-            return code
 
 
 def _run_action(cfg: Config, action: str, asset: Asset, account: Account) -> int:
