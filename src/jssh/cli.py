@@ -6,7 +6,8 @@ import sys
 from getpass import getpass
 
 from jssh import __version__
-from jssh.cache import clear_cache, load_recent
+from jssh.cache import clear_cache, load_assets, load_recent
+from jssh.complete import account_tokens, host_tokens
 from jssh.config import Config, load_config, public_config
 from jssh.connectors.sftp import run_sftp
 from jssh.connectors.ssh import run_ssh
@@ -74,6 +75,10 @@ def _parser() -> argparse.ArgumentParser:
     listing = sub.add_parser("list", help="Print cached granted assets")
     listing.set_defaults(func=_cmd_list)
 
+    complete = sub.add_parser("complete", help="Print cache tokens for shell completion")
+    complete.add_argument("kind", choices=("host", "account"))
+    complete.add_argument("query", nargs="?", help="Hostname when kind is account")
+    complete.set_defaults(func=_cmd_complete)
     recent = sub.add_parser("recent", help="Print recent connections")
     recent.set_defaults(func=_cmd_recent)
 
@@ -137,6 +142,23 @@ def _cmd_recent(args: argparse.Namespace) -> int:
         return 0
     for item in items:
         print(f"{item.ts}  {item.action:8}  {item.hostname}  {item.account_name}")
+    return 0
+
+
+def _cmd_complete(args: argparse.Namespace) -> int:
+    try:
+        cfg = _cfg(args)
+    except JsshError:
+        return 0
+    cached = load_assets(cfg)
+    assets = cached[0] if cached else []
+    recent = load_recent(cfg)
+    if args.kind == "host":
+        tokens = host_tokens(assets, recent)
+    else:
+        tokens = account_tokens(assets, recent, args.query)
+    for token in tokens:
+        print(token)
     return 0
 
 

@@ -132,6 +132,19 @@ def test_doctor_without_config_fails(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert main(["--config", str(missing), "doctor"]) == 1
 
 
+def test_doctor_reports_otty(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("TERM_PROGRAM", "otty")
+    monkeypatch.setenv("OTTY_PANE_ID", "p_test")
+    monkeypatch.setattr("jssh.connectors.otty.find_otty_cli", lambda: "/app/otty-cli")
+    missing = tmp_path / "nope.yaml"
+    assert main(["--config", str(missing), "doctor"]) == 1
+    out = capsys.readouterr().out
+    assert "term_program: otty" in out
+    assert "otty_cli: /app/otty-cli" in out
+    assert "otty_pane: p_test" in out
+    assert "otty_sftp_split: on" in out
+
+
 def test_sftp_last_without_recent_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     cfg_path = tmp_path / "config.yaml"
     cfg_path.write_text(

@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from jssh.connectors.session import KokoDriver, KokoLogin, pick_row_id, pty_dimensions, sftp_quick_command
+from jssh.connectors.otty import OttySession
 
 class Child:
     def __init__(self) -> None:
@@ -75,6 +76,18 @@ def test_driver_sends_totp_then_hostname_then_account_id() -> None:
     assert child.sent == ["287082", "bi-server01", "2"]
     driver.filter_output("root@bi-server01:~# logout\n[Host]> ")
     assert child.sent == ["287082", "bi-server01", "2", "q"]
+
+
+def test_driver_emits_blocked_status_on_password() -> None:
+    child = Child()
+    status = OttySession(env={"TERM_PROGRAM": "otty"}, emit=lambda _data: None)
+    status.start("bi-server01 / linux-root")
+    driver = KokoDriver(child, lambda: "111111", ("[MFA auth]:",), KokoLogin("bi-server01", "linux-root"), status)
+    driver.filter_output("[MFA auth]: ")
+    out = driver.filter_output("Password: ")
+    text = out if isinstance(out, str) else out.decode("ascii")
+    assert "state=blocked" in text
+    assert "kind=auth" in text
 
 
 def test_unique_asset_skips_account_table() -> None:

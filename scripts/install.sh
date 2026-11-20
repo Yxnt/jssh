@@ -35,3 +35,4 @@ else
 fi
 
 echo "next: set JMS_AK and JMS_SK, edit $CONFIG_DIR/config.yaml, then run jssh doctor"
+echo "zsh completion: $ROOT/scripts/completions/_jssh  (copy onto \$fpath)"

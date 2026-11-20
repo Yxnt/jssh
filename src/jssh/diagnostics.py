@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from typing import Any
 
@@ -9,6 +10,8 @@ from jssh.config import Config, public_config
 from jssh.errors import ApiError, AuthError, ConfigError, JsshError
 from jssh.secrets import credential_presence, load_access_key, load_totp_secret
 from jssh.ui.fzf import require_fzf
+from jssh.connectors.otty import OttyOn
+from jssh.connectors import otty as otty_term
 
 
 def doctor(cfg: Config | None, *, probe: bool = False) -> int:
@@ -51,6 +54,14 @@ def doctor(cfg: Config | None, *, probe: bool = False) -> int:
         print(f"{binary}: {found or 'missing'}")
         if not found:
             ok = False
+    print(f"term_program: {os.environ.get('TERM_PROGRAM') or 'unset'}")
+    print(f"otty_cli: {otty_term.find_otty_cli() or 'missing'}")
+    print(f"otty_pane: {os.environ.get('OTTY_PANE_ID') or 'unset'}")
+    plan = otty_term.otty_split_plan()
+    if isinstance(plan, OttyOn):
+        print("otty_sftp_split: on")
+    else:
+        print(f"otty_sftp_split: {plan.reason}")
     if cfg and shutil.which("fzf"):
         try:
             require_fzf()

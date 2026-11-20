@@ -56,7 +56,7 @@ jssh secrets totp-file          # 写到 ~/.config/jssh/totp，权限 0600
 jssh secrets keychain-set      # 藏式输入后写入 macOS Keychain
 ```
 
-新 Warp 窗口不会继承另一个窗口里的 `export`。多窗口自动填 MFA 时，把种子放进配置或 totp 文件。
+新终端窗口不会继承另一个窗口里的 `export`。多窗口自动填 MFA 时，把种子放进配置或 totp 文件。
 
 ## 使用
 
@@ -77,13 +77,16 @@ jssh sftp --last
 
 这类命令在会话结束后直接退出 jssh。
 
-SSH 连上后，在该会话里按 **Ctrl+F**（发给本机 jssh）。剪贴板里是：
+SSH 连上后，在该会话里按 **Ctrl+F**（发给本机 jssh）。
 
 ```bash
 jssh sftp <主机> --account <账号>
 ```
 
-不含 TOTP。右上角会闪一句 `sftp copied`，约 2 秒后消失，不改 PS1。另开 Warp 窗口粘贴即可。当前 SSH 不用断。
+不含 TOTP。当前 SSH 不用断。
+
+- **Otty**：右侧打开 SFTP 分屏，右上角闪 `sftp pane`。找不到 Otty CLI 或 `JSSH_OTTY=0` 时退回剪贴板。
+- **其他终端**：命令进剪贴板，右上角闪 `sftp copied`。
 
 SSH 会自动填 KoKo 的 `[MFA auth]:`。口令仍需自己输入。选中资产后会把主机名和系统账号发给 KoKo，不再停在网关菜单上手输。
 
@@ -100,14 +103,18 @@ SFTP 用本机交互式 `sftp`，不传 `-b`。`exit` 后还在原来的 shell�
 | `jssh sync` | 从 API 刷新有权限的资产 |
 | `jssh list` | 打印缓存 |
 | `jssh recent` | 打印最近连接 |
+| `jssh complete host` | 打印缓存主机名，给 shell 补全用 |
+| `jssh complete account [主机]` | 打印缓存系统账号 |
 | `jssh cache clear` | 删缓存 |
-| `jssh doctor` | 检查配置、fzf、ssh、sftp、密钥是否存在 |
+| `jssh doctor` | 检查配置、fzf、ssh、sftp、Otty、密钥是否存在 |
 | `jssh doctor --probe` | 只读探测 profile 和资产接口 |
 | `jssh config` | 打印不含密钥的配置 |
 | `jssh secrets totp-file` | 把 TOTP 种子写入 0600 文件 |
 | `jssh secrets keychain-set` | 把 AK/SK/TOTP 写入 Keychain |
 
 缓存目录：`~/Library/Caches/jssh/`，默认 TTL 600 秒。过期缓存仍可连，但会提示授权可能已变。缓存不存 AK、SK、口令、MFA。
+
+zsh 补全：把 `scripts/completions/_jssh` 放进 `$fpath` 里的一个目录，再开一个 shell。`jssh ssh <TAB>` 出主机名，`--account <TAB>` 出账号。只读缓存，不调 API，不打印密钥。Otty 默认用 Tab 接受幽灵提示。跑过的 `jssh ssh 主机` 会进 Otty 的本地学习。要把 Tab 还给 zsh，到 Settings → Controls → Autocomplete 改 Accept Suggestion。
 
 ## 常见问题
 
@@ -124,6 +131,7 @@ SFTP 用本机交互式 `sftp`，不传 `-b`。`exit` 后还在原来的 shell�
 | SFTP 路径不对 | 设 `sftp.path_overrides` |
 | 没有系统账号 | 在 JumpServer 确认名称后设 `sftp.account_overrides` |
 | fzf missing | `brew install fzf` |
+| Otty Ctrl+F 没有分屏 | `jssh doctor` 看 `otty_cli` / `otty_sftp_split`。`JSSH_OTTY=0` 会关掉分屏 |
 
 ## 测试
 

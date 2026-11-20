@@ -9,10 +9,12 @@ import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 
 import pexpect
 
 from jssh.config import Config
+from jssh.connectors.otty import OttyOn, OttySession, open_sftp_sidecar, otty_split_plan
 from jssh.errors import JsshError
 from jssh.secrets import load_totp_secret
 from jssh.totp import totp_code
@@ -21,6 +23,7 @@ _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\].*?(?:\x07|\x1b\\)")
 _ASSET_HEADERS = ("Hostname", "主机名")
 _ACCOUNT_HEADERS = ("Username", "用户名")
 _SFTP_HINT_TEXT = "[jssh] sftp copied"
+_SFTP_PANE_HINT = "[jssh] sftp pane"
 _sftp_hint_timer: threading.Timer | None = None
 
 
@@ -40,36 +43,49 @@ class Phase(enum.Enum):
 
 
 def run_gateway(cfg: Config, argv: list[str], login: KokoLogin | None = None) -> int:
+    argv = resolve_gateway_argv(argv)
     print("starting: " + " ".join(argv), flush=True)
     if login:
-        print(
-            f"SFTP in another pane:  {sftp_quick_command(login)}",
-            flush=True,
-        )
-        print("In this SSH session, Ctrl-F copies that command. TOTP is never copied.", flush=True)
-    if not cfg.totp_auto:
-        return _run_plain(argv)
-    secret = load_totp_secret(cfg)
-    if secret is None:
-        print(
-            "warning: TOTP secret missing in this pane. "
-            "New Warp windows do not inherit exports. Run: jssh secrets totp-file",
-            flush=True,
-        )
-        return _run_plain(argv)
-    if not sys.stdin.isatty() or not sys.stdout.isatty():
-        print("warning: no TTY. MFA auto-fill disabled.", flush=True)
-        return _run_plain(argv)
+        print(f"SFTP:  {sftp_quick_command(login)}", flush=True)
+        if isinstance(otty_split_plan(), OttyOn):
+            print(
+                "In this SSH session, Ctrl-F opens SFTP in a split pane. TOTP is never copied.",
+                flush=True,
+            )
+        else:
+            print(
+                "In this SSH session, Ctrl-F copies that command. TOTP is never copied.",
+                flush=True,
+            )
+    otty = OttySession()
+    title = f"{login.hostname} / {login.account_name}" if login else None
+    otty.start(title)
+    try:
+        if not cfg.totp_auto:
+            return _run_plain(argv)
+        secret = load_totp_secret(cfg)
+        if secret is None:
+            print(
+                "warning: TOTP secret missing in this pane. "
+                "New terminal windows do not inherit exports. Run: jssh secrets totp-file",
+                flush=True,
+            )
+            return _run_plain(argv)
+        if not sys.stdin.isatty() or not sys.stdout.isatty():
+            print("warning: no TTY. MFA auto-fill disabled.", flush=True)
+            return _run_plain(argv)
 
-    def code() -> str:
-        return totp_code(
-            secret.secret,
-            digits=cfg.totp_digits,
-            period=cfg.totp_period,
-            algorithm=cfg.totp_algorithm,
-        )
+        def code() -> str:
+            return totp_code(
+                secret.secret,
+                digits=cfg.totp_digits,
+                period=cfg.totp_period,
+                algorithm=cfg.totp_algorithm,
+            )
 
-    return run_with_mfa(argv, code, cfg.totp_prompts, login)
+        return run_with_mfa(argv, code, cfg.totp_prompts, login, otty)
+    finally:
+        otty.close()
 
 
 def _run_plain(argv: list[str]) -> int:
@@ -84,11 +100,24 @@ def pty_dimensions() -> tuple[int, int]:
     return size.lines, size.columns
 
 
+def resolve_gateway_argv(argv: list[str]) -> list[str]:
+    if not argv:
+        return argv
+    binary = argv[0]
+    if Path(binary).is_absolute():
+        return argv
+    found = shutil.which(binary)
+    if found is None:
+        return argv
+    return [found, *argv[1:]]
+
+
 def run_with_mfa(
     argv: list[str],
     code: Callable[[], str],
     prompts: tuple[str, ...],
     login: KokoLogin | None = None,
+    otty: OttySession | None = None,
 ) -> int:
     rows, cols = pty_dimensions()
     child = pexpect.spawn(
@@ -97,7 +126,7 @@ def run_with_mfa(
         timeout=None,
         dimensions=(rows, cols),
     )
-    driver = KokoDriver(child, code, prompts, login)
+    driver = KokoDriver(child, code, prompts, login, otty)
     previous = signal.getsignal(signal.SIGWINCH)
 
     def on_winch(signum, frame) -> None:
@@ -136,27 +165,24 @@ def sftp_quick_command(login: KokoLogin) -> str:
     return f"jssh sftp {login.hostname} --account {login.account_name}"
 
 
-def _sftp_hint_overlay(clear: bool) -> bytes:
+def _sftp_hint_overlay(clear: bool, kind: str = "copied") -> bytes:
+    text = _SFTP_PANE_HINT if kind == "pane" else _SFTP_HINT_TEXT
     _, cols = pty_dimensions()
-    col = max(1, cols - len(_SFTP_HINT_TEXT) + 1)
-    payload = (
-        b" " * len(_SFTP_HINT_TEXT)
-        if clear
-        else b"\033[2m" + _SFTP_HINT_TEXT.encode("ascii") + b"\033[0m"
-    )
+    col = max(1, cols - len(text) + 1)
+    payload = b" " * len(text) if clear else b"\033[2m" + text.encode("ascii") + b"\033[0m"
     return b"\0337\033[1;" + str(col).encode("ascii") + b"H" + payload + b"\0338"
 
 
-def _flash_sftp_copied() -> None:
+def _flash_sftp_hint(kind: str) -> None:
     global _sftp_hint_timer
-    sys.stdout.buffer.write(_sftp_hint_overlay(clear=False))
+    sys.stdout.buffer.write(_sftp_hint_overlay(clear=False, kind=kind))
     sys.stdout.buffer.flush()
     if _sftp_hint_timer is not None:
         _sftp_hint_timer.cancel()
 
     def clear() -> None:
         try:
-            sys.stdout.buffer.write(_sftp_hint_overlay(clear=True))
+            sys.stdout.buffer.write(_sftp_hint_overlay(clear=True, kind=kind))
             sys.stdout.buffer.flush()
         except OSError:
             pass
@@ -170,9 +196,11 @@ def _sftp_hotkey(login: KokoLogin) -> Callable[[bytes], bytes]:
     def input_filter(data: bytes) -> bytes:
         if b"\x06" not in data:
             return data
-        cmd = sftp_quick_command(login)
-        subprocess.run(["pbcopy"], input=cmd.encode("utf-8"), check=False)
-        _flash_sftp_copied()
+        kind = open_sftp_sidecar(
+            sftp_quick_command(login),
+            title=f"sftp {login.hostname}",
+        )
+        _flash_sftp_hint(kind)
         return data.replace(b"\x06", b"")
 
     return input_filter
@@ -244,11 +272,13 @@ class KokoDriver:
         code: Callable[[], str],
         prompts: tuple[str, ...],
         login: KokoLogin | None,
+        status: OttySession | None = None,
     ) -> None:
         self._child = child
         self._code = code
         self._prompts = prompts
         self._login = login
+        self._status = status
         self._buf = ""
         self._phase = Phase.MFA
         self._binary = False
@@ -268,7 +298,15 @@ class KokoDriver:
             self._on_after_search()
         elif self._phase is Phase.SESSION:
             self._on_session()
-        return data
+        if self._status is None:
+            return data
+        at_gateway = self._phase in {Phase.MFA, Phase.MENU, Phase.AFTER_SEARCH}
+        osc = self._status.observe(text, at_gateway=at_gateway)
+        if not osc:
+            return data
+        if self._binary:
+            return bytes(data) + osc
+        return data + osc.decode("ascii")
 
     def _on_mfa(self) -> None:
         plain = _plain(self._buf)
