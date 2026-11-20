@@ -78,6 +78,29 @@ def test_driver_sends_totp_then_hostname_then_account_id() -> None:
     assert child.sent == ["287082", "bi-server01", "2", "q"]
 
 
+
+def test_gateway_strips_cursor_home() -> None:
+    child = Child()
+    login = KokoLogin(hostname="bi-server01", account_name="linux-root")
+    driver = KokoDriver(child, lambda: "111111", ("[MFA auth]:",), login)
+    out = driver.filter_output("\x1b[H\x1b[2J[MFA auth]: ")
+    assert "\x1b[H" not in out
+    assert "\x1b[2J" not in out
+    assert "[MFA auth]:" in out
+    assert child.sent == ["111111"]
+
+
+def test_remote_session_keeps_cursor_home() -> None:
+    child = Child()
+    login = KokoLogin(hostname="bi-server01", account_name="linux-root")
+    driver = KokoDriver(child, lambda: "111111", ("[MFA auth]:",), login)
+    driver.filter_output("[MFA auth]: ")
+    driver.filter_output("Opt> ")
+    driver.filter_output("ID Username\n1 linux-root root\nID> ")
+    out = driver.filter_output("\x1b[1;1Hvim")
+    assert "\x1b[1;1H" in out
+    assert "vim" in out
+
 def test_driver_emits_blocked_status_on_password() -> None:
     child = Child()
     status = OttySession(env={"TERM_PROGRAM": "otty"}, emit=lambda _data: None)

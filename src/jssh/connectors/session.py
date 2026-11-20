@@ -21,6 +21,8 @@ from jssh.secrets import load_totp_secret
 from jssh.totp import totp_code
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\].*?(?:\x07|\x1b\\)")
+_REWIND = re.compile(r"\x1b\[[0-9;]*[HfAF]|\x1b\[[0-3]?J")
+_REWIND_B = re.compile(rb"\x1b\[[0-9;]*[HfAF]|\x1b\[[0-3]?J")
 _ASSET_HEADERS = ("Hostname", "主机名")
 _ACCOUNT_HEADERS = ("Username", "用户名")
 _SFTP_HINT_TEXT = "[jssh] sftp copied"
@@ -288,6 +290,12 @@ def _plain(buf: str) -> str:
     return _ANSI.sub("", buf)
 
 
+def _strip_rewind(data: str | bytes) -> str | bytes:
+    if isinstance(data, (bytes, bytearray)):
+        return _REWIND_B.sub(b"", bytes(data))
+    return _REWIND.sub("", data)
+
+
 def _has_header(plain: str, names: tuple[str, ...]) -> bool:
     return any(name in plain for name in names)
 
@@ -312,6 +320,9 @@ class KokoDriver:
         self._entered_session = False
 
     def filter_output(self, data: str | bytes) -> str | bytes:
+        gateway = self._phase in {Phase.MFA, Phase.MENU, Phase.AFTER_SEARCH}
+        if gateway:
+            data = _strip_rewind(data)
         self._binary = isinstance(data, (bytes, bytearray))
         text = data.decode("utf-8", "replace") if self._binary else data
         self._buf += text
