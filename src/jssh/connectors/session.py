@@ -15,7 +15,6 @@ import pexpect
 
 from jssh.config import Config
 from jssh.connectors.otty import OttyOn, OttySession, open_sftp_sidecar, otty_split_plan
-from jssh.connectors.warpify import WarpNested, WarpSession, warp_plan
 from jssh.errors import JsshError
 from jssh.secrets import load_totp_secret
 from jssh.totp import totp_code
@@ -130,28 +129,6 @@ def run_with_mfa(
         dimensions=(rows, cols),
     )
     driver = KokoDriver(child, code, prompts, login, otty)
-    plan = warp_plan(argv, is_tty=sys.stdin.isatty() and sys.stdout.isatty())
-    warp = WarpSession(plan) if isinstance(plan, WarpNested) else None
-    sftp = _sftp_hotkey(login) if login else None
-
-    def output_filter(data: str | bytes) -> str | bytes:
-        out = driver.filter_output(data)
-        if warp is None:
-            return out
-        out = warp.feed_output(out)
-        if warp.took_shell:
-            driver.suppress()
-        return out
-
-    def input_filter(data: bytes) -> bytes:
-        if warp is not None:
-            data = warp.feed_input(data)
-            if not data:
-                return data
-        if sftp is not None:
-            return sftp(data)
-        return data
-
     previous = signal.getsignal(signal.SIGWINCH)
 
     def on_winch(signum, frame) -> None:
@@ -167,8 +144,8 @@ def run_with_mfa(
     on_winch(signal.SIGWINCH, None)
     try:
         child.interact(
-            output_filter=output_filter,
-            input_filter=input_filter if warp is not None or sftp is not None else None,
+            output_filter=driver.filter_output,
+            input_filter=_sftp_hotkey(login) if login else None,
         )
     except KeyboardInterrupt:
         if child.isalive():
@@ -402,9 +379,6 @@ class KokoDriver:
         self._buf = ""
         self._phase = Phase.DONE
 
-    def suppress(self) -> None:
-        self._phase = Phase.DONE
-        self._buf = ""
 
     def _send(self, line: str) -> None:
         try:

@@ -92,8 +92,6 @@ SSH 会自动填 KoKo 的 `[MFA auth]:`。口令仍需自己输入。选中资�
 
 SFTP 用本机交互式 `sftp`，不传 `-b`。`exit` 后还在原来的 shell。
 
-Warp 里整段 SSH 是一块。KoKo 跑不了 nested bootstrap，假 `InitShell` Warp 也不认。`JSSH_WARPIFY=0` 无额外效果。
-
 ## 命令
 
 | 命令 | 作用 |
@@ -134,7 +132,6 @@ zsh 补全：把 `scripts/completions/_jssh` 放进 `$fpath` 里的一个目录�
 | 没有系统账号 | 在 JumpServer 确认名称后设 `sftp.account_overrides` |
 | fzf missing | `brew install fzf` |
 | Otty Ctrl+F 没有分屏 | `jssh doctor` 看 `otty_cli` / `otty_sftp_split`。`JSSH_OTTY=0` 会关掉分屏 |
-| Warp Starting shell 转圈 | 已关闭 nested Warpify。新开一个 Warp tab 再连 |
 
 ## 测试
 
