@@ -18,7 +18,14 @@ _SFTP_TAIL = re.compile(r"(?i)sftp> ?$")
 _KOKO_TAILS = ("Opt>", "ID>", "[Host]>", "[MFA auth]:")
 _DISABLED = frozenset({"0", "false", "off", "no"})
 _SID = re.compile(rb"WARP_SESSION_ID=(\d+)")
-_BOOTSTRAP = re.compile(rb"WARP_|stty raw|SourcedRcFileForWarp|WARP_BOOTSTRAPPED")
+_SETUP = re.compile(
+    rb"WARP_|stty raw|SourcedRcFileForWarp|WARP_BOOTSTRAPPED|"
+    rb"bash_preexec|__bp_|warp_|HISTCONTROL|HISTIGNORE|"
+    rb"\bfunction\b|\blocal\b|\bdeclare\b|PROMPT_COMMAND|"
+    rb"precmd_functions|preexec_functions|COMPREPLY|"
+    rb"init_shell_hook|define_bashpreexec|BASH_PREEXEC"
+)
+_NOT_USER = re.compile(rb"^(else|fi|then|do|done|esac|}|;;)\s*$")
 
 
 @dataclass(frozen=True)
@@ -122,8 +129,25 @@ def _write_stdout(dcs: bytes) -> None:
     os.write(sys.stdout.fileno(), dcs)
 
 
-def _is_bootstrap(raw: bytes) -> bool:
-    return _BOOTSTRAP.search(raw) is not None
+def _setup_like(raw: bytes) -> bool:
+    if raw[:1] in b" \t":
+        return True
+    return _SETUP.search(raw) is not None
+
+
+def _looks_like_user(raw: bytes) -> bool:
+    stripped = raw.strip()
+    if not stripped or _NOT_USER.match(stripped):
+        return False
+    if _setup_like(raw):
+        return False
+    if b"{" in raw or b"function " in raw:
+        return False
+    return True
+
+
+def _brace_delta(raw: bytes) -> int:
+    return raw.count(b"{") + raw.count(b"(") - raw.count(b"}") - raw.count(b")")
 
 
 class WarpSession:
@@ -141,6 +165,9 @@ class WarpSession:
         self._awaiting = False
         self._secret = False
         self._block = 0
+        self._in_script = False
+        self._depth = 0
+        self._partial = False
 
     @property
     def took_shell(self) -> bool:
@@ -193,16 +220,25 @@ class WarpSession:
         return data
 
     def _swallow_bootstrap(self, raw: bytes) -> bool:
-        if isinstance(self._state, Announced):
-            if not _is_bootstrap(raw) and _SID.search(raw) is None:
+        if not isinstance(self._state, (Announced, Live)):
+            return False
+        if self._in_script:
+            if self._depth == 0 and not self._partial and _looks_like_user(raw):
+                self._in_script = False
                 return False
-            self._boot.extend(raw)
-            self._capture_sid()
+            self._accept_boot(raw)
             return True
-        if isinstance(self._state, Live) and _is_bootstrap(raw):
-            self._boot.extend(raw)
+        if _setup_like(raw) or _SID.search(raw) is not None:
+            self._in_script = True
+            self._accept_boot(raw)
             return True
         return False
+
+    def _accept_boot(self, raw: bytes) -> None:
+        self._boot.extend(raw)
+        self._depth = max(0, self._depth + _brace_delta(raw))
+        self._partial = not raw.endswith((b"\n", b"\r"))
+        self._capture_sid()
 
     def _capture_sid(self) -> None:
         if not isinstance(self._state, Announced):

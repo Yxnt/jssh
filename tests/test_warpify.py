@@ -85,6 +85,19 @@ def test_bootstrap_swallowed_until_sid_then_user_keys_pass(monkeypatch) -> None:
     assert hooks[0]["value"]["session_id"] != int(os.environ["WARP_SESSION_ID"])
 
 
+
+def test_bash_preexec_after_sid_is_swallowed() -> None:
+    warp = WarpSession(WarpNested(), emit=lambda _d: None)
+    warp.feed_output("[root@localhost ~]# ")
+    assert warp.feed_input(b"WARP_SESSION_ID=99\n") == b""
+    assert (
+        warp.feed_input(b"function define_bashpreexec_functions() {\n") == b""
+    )
+    assert warp.feed_input(b" bash_preexec_imported=\"defined\"\n") == b""
+    assert warp.feed_input(b"}\n") == b""
+    assert warp.feed_input(b" HISTCONTROL=ignorespace\n") == b""
+    assert warp.feed_input(b"ls\r") == b"ls\r"
+
 def test_preexec_uses_nested_id_without_waiting() -> None:
     emitted: list[bytes] = []
     warp = WarpSession(WarpNested(), emit=emitted.append)
