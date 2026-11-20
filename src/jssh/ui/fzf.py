@@ -33,7 +33,7 @@ def pick_asset(assets: list[Asset], recent: list[RecentEntry] | None = None) -> 
     raise ConfigError("Selected asset is no longer in the list")
 
 
-def pick_account(asset: Asset, accounts: list[Account]) -> Account:
+def pick_account(asset: Asset, accounts: list[Account]) -> Account | None:
     if not accounts:
         raise ConfigError(
             f"No system accounts for {asset.hostname}. "
@@ -41,9 +41,19 @@ def pick_account(asset: Asset, accounts: list[Account]) -> Account:
         )
     if len(accounts) == 1:
         return accounts[0]
-    lines = [f"{item.id}\t{item.name}\t{item.username}\t{item.protocol}" for item in accounts]
-    selected = _run(lines, header=f"Asset: {asset.hostname}  |  select account", nth="2..")
+    lines = ["__back__\t..\tback to hosts\t"]
+    lines.extend(f"{item.id}\t{item.name}\t{item.username}\t{item.protocol}" for item in accounts)
+    try:
+        selected = _run(
+            lines,
+            header=f"Asset: {asset.hostname}  |  Enter select  Esc back to hosts",
+            nth="2..",
+        )
+    except Cancelled:
+        return None
     ident = selected.split("\t", 1)[0]
+    if ident == "__back__":
+        return None
     for item in accounts:
         if item.id == ident:
             return item

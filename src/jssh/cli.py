@@ -262,7 +262,14 @@ def _connect(cfg: Config, action: str | None, query: str | None, account_name: s
         else:
             asset = pick_asset(matched, load_recent(cfg))
         accounts = accounts_for(cfg, asset)
-        account = account_from_name(accounts, account_name) if account_name else pick_account(asset, accounts)
+        if account_name:
+            account = account_from_name(accounts, account_name)
+        else:
+            account = pick_account(asset, accounts)
+            if account is None:
+                query = None
+                account_name = None
+                continue
         while True:
             chosen = action or pick_action(asset, account)
             action = None
