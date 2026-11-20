@@ -80,17 +80,98 @@ def test_ctrl_f_splits_in_otty(monkeypatch) -> None:
     ]
 
 
-def test_ctrl_f_copies_when_not_otty() -> None:
+def test_ctrl_f_copies_when_no_tab_api() -> None:
     copied: list[str] = []
     result = open_sftp_sidecar(
         "jssh sftp bi-server01 --account linux-root",
         title="sftp bi-server01",
-        env={"TERM_PROGRAM": "Apple_Terminal"},
+        env={"TERM_PROGRAM": "xterm"},
         copy=copied.append,
         run=lambda *_a, **_k: SimpleNamespace(returncode=0),
     )
     assert result == "copied"
     assert copied == ["jssh sftp bi-server01 --account linux-root"]
+
+
+def _sidecar_run(env: dict[str, str]) -> tuple[str, list[list[str]], list[str]]:
+    ran: list[list[str]] = []
+    copied: list[str] = []
+
+    def run(argv: list[str], **_kwargs: object) -> SimpleNamespace:
+        ran.append(argv)
+        return SimpleNamespace(returncode=0)
+
+    result = open_sftp_sidecar(
+        "jssh sftp bi-server01 --account linux-root",
+        title="sftp bi-server01",
+        env=env,
+        copy=copied.append,
+        run=run,
+    )
+    return result, ran, copied
+
+
+def test_ctrl_f_opens_terminal_tab() -> None:
+    result, ran, copied = _sidecar_run({"TERM_PROGRAM": "Apple_Terminal"})
+    assert result == "pane"
+    assert copied == []
+    assert ran[0][:2] == ["osascript", "-e"]
+    script = ran[0][2]
+    assert "Terminal" in script
+    assert "do script" in script
+    assert "in front window" in script
+    assert "jssh sftp bi-server01 --account linux-root" in script
+
+
+def test_ctrl_f_opens_iterm_tab() -> None:
+    result, ran, copied = _sidecar_run({"TERM_PROGRAM": "iTerm.app"})
+    assert result == "pane"
+    assert copied == []
+    script = ran[0][2]
+    assert "iTerm" in script
+    assert "create tab with default profile" in script
+    assert "write text" in script
+    assert "jssh sftp bi-server01 --account linux-root" in script
+
+
+def test_ctrl_f_opens_kitty_tab() -> None:
+    result, ran, copied = _sidecar_run({"TERM_PROGRAM": "kitty"})
+    assert result == "pane"
+    assert copied == []
+    assert ran == [
+        [
+            "kitten",
+            "@",
+            "launch",
+            "--type=tab",
+            "--cwd=current",
+            "--",
+            "jssh",
+            "sftp",
+            "bi-server01",
+            "--account",
+            "linux-root",
+        ]
+    ]
+
+
+def test_ctrl_f_opens_wezterm_tab() -> None:
+    result, ran, copied = _sidecar_run({"TERM_PROGRAM": "WezTerm"})
+    assert result == "pane"
+    assert copied == []
+    assert ran == [
+        [
+            "wezterm",
+            "cli",
+            "spawn",
+            "--",
+            "jssh",
+            "sftp",
+            "bi-server01",
+            "--account",
+            "linux-root",
+        ]
+    ]
 
 
 def test_ctrl_f_opens_warp_window(tmp_path: Path) -> None:

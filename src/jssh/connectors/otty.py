@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from jssh.connectors.terminal_tab import open_terminal_tab
 from jssh.connectors.warp import open_warp_sftp
 
 _DISABLED = frozenset({"0", "false", "off", "no"})
@@ -124,6 +125,8 @@ def open_sftp_sidecar(
         if result is not None and result.returncode == 0:
             return "pane"
     if open_warp_sftp(command, title, env=env, tab_path=warp_tab, opener=warp_open):
+        return "pane"
+    if open_terminal_tab(command, env=env, run=run):
         return "pane"
     _copy_command(command, copy)
     return "copied"
