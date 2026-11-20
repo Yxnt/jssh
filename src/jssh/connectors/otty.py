@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
+from jssh.connectors.warp import open_warp_sftp
+
 _DISABLED = frozenset({"0", "false", "off", "no"})
 _BUNDLED_OTTY = Path("/Applications/Otty.app/Contents/MacOS/otty-cli")
 _PASSWORD_PROMPT = re.compile(r"(?im)^\s*(password|passwd|口令|密码)\s*:")
@@ -108,6 +110,8 @@ def open_sftp_sidecar(
     env: Mapping[str, str] | None = None,
     copy: Callable[[str], None] | None = None,
     run: Callable[..., subprocess.CompletedProcess[bytes]] | None = None,
+    warp_tab: Path | None = None,
+    warp_open: Callable[[str], subprocess.CompletedProcess[bytes]] | None = None,
 ) -> Sidecar:
     plan = otty_split_plan(env)
     if isinstance(plan, OttyOn):
@@ -119,6 +123,8 @@ def open_sftp_sidecar(
             result = None
         if result is not None and result.returncode == 0:
             return "pane"
+    if open_warp_sftp(command, title, env=env, tab_path=warp_tab, opener=warp_open):
+        return "pane"
     _copy_command(command, copy)
     return "copied"
 

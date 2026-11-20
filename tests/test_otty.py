@@ -93,6 +93,32 @@ def test_ctrl_f_copies_when_not_otty() -> None:
     assert copied == ["jssh sftp bi-server01 --account linux-root"]
 
 
+def test_ctrl_f_opens_warp_window(tmp_path: Path) -> None:
+    opened: list[str] = []
+    tab = tmp_path / "jssh_sftp.toml"
+    copied: list[str] = []
+
+    def opener(uri: str) -> SimpleNamespace:
+        opened.append(uri)
+        return SimpleNamespace(returncode=0)
+
+    result = open_sftp_sidecar(
+        "jssh sftp bi-server01 --account linux-root",
+        title="sftp bi-server01",
+        env={"TERM_PROGRAM": "WarpTerminal"},
+        copy=copied.append,
+        warp_tab=tab,
+        warp_open=opener,
+    )
+    assert result == "pane"
+    assert copied == []
+    assert opened == ["warp://tab_config/jssh_sftp?new_window=true"]
+    text = tab.read_text(encoding="utf-8")
+    assert "jssh sftp bi-server01 --account linux-root" in text
+    assert 'title = "sftp bi-server01"' in text
+    assert 'type = "terminal"' in text
+
+
 def test_ctrl_f_copies_when_split_fails(monkeypatch) -> None:
     monkeypatch.setattr("jssh.connectors.otty.find_otty_cli", lambda: "/app/otty-cli")
     copied: list[str] = []

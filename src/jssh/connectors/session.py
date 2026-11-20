@@ -15,6 +15,7 @@ import pexpect
 
 from jssh.config import Config
 from jssh.connectors.otty import OttyOn, OttySession, open_sftp_sidecar, otty_split_plan
+from jssh.connectors.warp import in_warp
 from jssh.errors import JsshError
 from jssh.secrets import load_totp_secret
 from jssh.totp import totp_code
@@ -52,6 +53,11 @@ def run_gateway(cfg: Config, argv: list[str], login: KokoLogin | None = None) ->
         if isinstance(otty_split_plan(), OttyOn):
             print(
                 "In this SSH session, Ctrl-F opens SFTP in a split pane. TOTP is never copied.",
+                flush=True,
+            )
+        elif in_warp():
+            print(
+                "In this SSH session, Ctrl-F opens SFTP in a new Warp window. TOTP is never copied.",
                 flush=True,
             )
         else:
