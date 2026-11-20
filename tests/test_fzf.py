@@ -7,7 +7,7 @@ import pytest
 from jssh.cli import _connect
 from jssh.errors import Cancelled, ConfigError
 from jssh.models.asset import Account, Asset
-from jssh.ui.fzf import pick_account
+from jssh.ui.fzf import pick_account, pick_action
 
 
 def test_pick_account_esc_goes_back(sample_asset, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -24,7 +24,7 @@ def test_pick_account_back_row_goes_back(sample_asset, monkeypatch: pytest.Monke
         Account(id="acc-1", name="linux-root", username="root"),
         Account(id="acc-2", name="linux-user", username="user"),
     ]
-    monkeypatch.setattr("jssh.ui.fzf._run", lambda *_a, **_k: "__back__\t..\tback to hosts\t")
+    monkeypatch.setattr("jssh.ui.fzf._run", lambda *_a, **_k: "back\tBack")
     assert pick_account(sample_asset, accounts) is None
 
 
@@ -54,6 +54,24 @@ def test_pick_account_rejects_stale_id(sample_asset, monkeypatch: pytest.MonkeyP
     with pytest.raises(ConfigError, match="no longer"):
         pick_account(sample_asset, accounts)
 
+
+
+def test_account_and_action_share_back_row(sample_asset, monkeypatch: pytest.MonkeyPatch) -> None:
+    accounts = [
+        Account(id="acc-1", name="linux-root", username="root"),
+        Account(id="acc-2", name="linux-user", username="user"),
+    ]
+    seen: list[list[str]] = []
+
+    def run(lines: list[str], **_kwargs: object) -> str:
+        seen.append(lines)
+        raise Cancelled("cancelled")
+
+    monkeypatch.setattr("jssh.ui.fzf._run", run)
+    assert pick_account(sample_asset, accounts) is None
+    with pytest.raises(Cancelled):
+        pick_action(sample_asset, accounts[0])
+    assert seen[0][-1] == seen[1][-1] == "back\tBack"
 
 def test_connect_account_back_reopens_host_picker(
     tmp_cfg,

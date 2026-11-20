@@ -6,6 +6,7 @@ import subprocess
 from jssh.errors import Cancelled, ConfigError
 from jssh.models.asset import Account, Asset, RecentEntry
 
+_BACK = "back\tBack"
 
 def require_fzf() -> str:
     path = shutil.which("fzf")
@@ -41,18 +42,18 @@ def pick_account(asset: Asset, accounts: list[Account]) -> Account | None:
         )
     if len(accounts) == 1:
         return accounts[0]
-    lines = ["__back__\t..\tback to hosts\t"]
-    lines.extend(f"{item.id}\t{item.name}\t{item.username}\t{item.protocol}" for item in accounts)
+    lines = [f"{item.id}\t{item.name}\t{item.username}\t{item.protocol}" for item in accounts]
+    lines.append(_BACK)
     try:
         selected = _run(
             lines,
-            header=f"Asset: {asset.hostname}  |  Enter select  Esc back to hosts",
+            header=f"{asset.hostname}  |  Enter select  Esc back  Back for other hosts",
             nth="2..",
         )
     except Cancelled:
         return None
     ident = selected.split("\t", 1)[0]
-    if ident == "__back__":
+    if ident == "back":
         return None
     for item in accounts:
         if item.id == ident:
@@ -66,7 +67,7 @@ def pick_action(asset: Asset | None = None, account: Account | None = None) -> s
         "ssh\tSSH Terminal",
         "copy-sftp\tCopy SFTP command",
         "copy-ssh\tCopy SSH command",
-        "back\tBack",
+        _BACK,
     ]
     header = "Choose action"
     if asset and account:
