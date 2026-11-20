@@ -92,7 +92,7 @@ SSH 会自动填 KoKo 的 `[MFA auth]:`。口令仍需自己输入。选中资�
 
 SFTP 用本机交互式 `sftp`，不传 `-b`。`exit` 后还在原来的 shell。
 
-Warp 里进资产 shell 之后会按 `WARP_SESSION_ID` 吞掉 bootstrap，用假 hook 画命令块。不把 Warp 的 setup 脚本发给 KoKo。没有 Warp 幽灵补全。`JSSH_WARPIFY=0` 关掉。
+Warp 里 KoKo 不能跑 nested bootstrap。不会发 `SourcedRcFileForWarp`，避免 Starting shell 转圈。清屏序列会剥掉以免空白块。
 
 ## 命令
 
@@ -134,7 +134,7 @@ zsh 补全：把 `scripts/completions/_jssh` 放进 `$fpath` 里的一个目录�
 | 没有系统账号 | 在 JumpServer 确认名称后设 `sftp.account_overrides` |
 | fzf missing | `brew install fzf` |
 | Otty Ctrl+F 没有分屏 | `jssh doctor` 看 `otty_cli` / `otty_sftp_split`。`JSSH_OTTY=0` 会关掉分屏 |
-| Warp Starting shell 转圈 | `JSSH_WARPIFY=0` 关掉假块。bootstrap 已按 SID 吞掉，不再等 2 秒 |
+| Warp Starting shell 转圈 | 已关闭 nested Warpify。新开一个 Warp tab 再连 |
 
 ## 测试
 
