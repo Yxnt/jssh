@@ -64,7 +64,7 @@ class WarpSession:
         return False
 
     def feed_output(self, data: str | bytes) -> str | bytes:
-        return strip_erase_display(data)
+        return data
 
     def feed_input(self, data: str | bytes) -> str | bytes:
         return data

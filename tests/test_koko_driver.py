@@ -97,8 +97,9 @@ def test_remote_session_keeps_cursor_home() -> None:
     driver.filter_output("[MFA auth]: ")
     driver.filter_output("Opt> ")
     driver.filter_output("ID Username\n1 linux-root root\nID> ")
-    out = driver.filter_output("\x1b[1;1Hvim")
-    assert "\x1b[1;1H" in out
+    out = driver.filter_output("\x1b[H\x1b[2Jvim")
+    assert "\x1b[H" in out
+    assert "\x1b[2J" in out
     assert "vim" in out
 
 def test_driver_emits_blocked_status_on_password() -> None:

@@ -15,7 +15,7 @@ import pexpect
 
 from jssh.config import Config
 from jssh.connectors.otty import OttyOn, OttySession, open_sftp_sidecar, otty_split_plan
-from jssh.connectors.warpify import WarpOff, WarpSession, warp_plan
+from jssh.connectors.warpify import WarpNested, WarpSession, warp_plan
 from jssh.errors import JsshError
 from jssh.secrets import load_totp_secret
 from jssh.totp import totp_code
@@ -131,11 +131,7 @@ def run_with_mfa(
     )
     driver = KokoDriver(child, code, prompts, login, otty)
     plan = warp_plan(argv, is_tty=sys.stdin.isatty() and sys.stdout.isatty())
-    warp = (
-        None
-        if isinstance(plan, WarpOff) and plan.reason in {"not-warp", "sftp"}
-        else WarpSession(plan)
-    )
+    warp = WarpSession(plan) if isinstance(plan, WarpNested) else None
     sftp = _sftp_hotkey(login) if login else None
 
     def output_filter(data: str | bytes) -> str | bytes:

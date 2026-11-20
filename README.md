@@ -92,7 +92,7 @@ SSH 会自动填 KoKo 的 `[MFA auth]:`。口令仍需自己输入。选中资�
 
 SFTP 用本机交互式 `sftp`，不传 `-b`。`exit` 后还在原来的 shell。
 
-Warp 里 KoKo 不能跑 nested bootstrap。不会发 `SourcedRcFileForWarp`，避免 Starting shell 转圈。清屏序列会剥掉以免空白块。
+Warp 里 KoKo 不能跑 nested bootstrap。不会发 `SourcedRcFileForWarp`，避免 Starting shell 转圈。
 
 ## 命令
 
