@@ -86,7 +86,7 @@ jssh sftp <主机> --account <账号>
 不含 TOTP。当前 SSH 不用断。
 
 - **Otty**：右侧打开 SFTP 分屏，右上角闪 `sftp pane`。找不到 Otty CLI 或 `JSSH_OTTY=0` 时退回剪贴板。
-- **Warp**：新窗口跑同一条 `jssh sftp`。失败则复制命令。
+- **Warp**：当前窗口新 tab 跑同一条 `jssh sftp`。失败则复制命令。
 - **其他终端**：命令进剪贴板，右上角闪 `sftp copied`。
 
 SSH 会自动填 KoKo 的 `[MFA auth]:`。口令仍需自己输入。选中资产后会把主机名和系统账号发给 KoKo，不再停在网关菜单上手输。

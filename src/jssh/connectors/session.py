@@ -57,7 +57,7 @@ def run_gateway(cfg: Config, argv: list[str], login: KokoLogin | None = None) ->
             )
         elif in_warp():
             print(
-                "In this SSH session, Ctrl-F opens SFTP in a new Warp window. TOTP is never copied.",
+                "In this SSH session, Ctrl-F opens SFTP in a new Warp tab. TOTP is never copied.",
                 flush=True,
             )
         else:

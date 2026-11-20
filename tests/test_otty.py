@@ -112,7 +112,7 @@ def test_ctrl_f_opens_warp_window(tmp_path: Path) -> None:
     )
     assert result == "pane"
     assert copied == []
-    assert opened == ["warp://tab_config/jssh_sftp?new_window=true"]
+    assert opened == ["warp://tab_config/jssh_sftp"]
     text = tab.read_text(encoding="utf-8")
     assert "jssh sftp bi-server01 --account linux-root" in text
     assert 'title = "sftp bi-server01"' in text

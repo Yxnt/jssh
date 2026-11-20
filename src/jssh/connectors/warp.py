@@ -7,7 +7,7 @@ from pathlib import Path
 
 _TAB_STEM = "jssh_sftp"
 _TAB_PATH = Path.home() / ".warp" / "tab_configs" / f"{_TAB_STEM}.toml"
-_URI = f"warp://tab_config/{_TAB_STEM}?new_window=true"
+_URI = f"warp://tab_config/{_TAB_STEM}"
 
 
 def in_warp(env: Mapping[str, str] | None = None) -> bool:
