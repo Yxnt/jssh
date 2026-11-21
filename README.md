@@ -93,6 +93,34 @@ SSH 会自动填 KoKo 的 `[MFA auth]:`。口令仍需自己输入。选中资�
 
 SFTP 用本机交互式 `sftp`，不传 `-b`。`exit` 后还在原来的 shell。
 
+## Otty Shell Integration
+
+Otty 的 Cursor Click-to-Move 需要远程 Bash 的 OSC 133 `A`（prompt 开始）和 `B`（输入区开始）。jssh 走 pexpect 调系统 `ssh`，不会经过 Otty 的 `ssh` wrapper，KoKo 也不会给目标机装这些标记。
+
+在 Otty 里用 jssh SSH（且 MFA 自动填可用）时，资产登录完成后会探测当前 `$PS1`，在原 prompt 前后加上 `A`/`B`，不改颜色、用户名、路径或主题文字。不写 OSC 133 `C`/`D`。
+
+```yaml
+terminal:
+  otty_shell_integration: auto   # auto：仅 Otty；true / false：强制
+  otty_shell_install: false      # true：把同样的块写入远程 ~/.bashrc（先备份）
+```
+
+`auto` 看 `TERM_PROGRAM=otty`。`JSSH_OTTY=0` 会关掉 Otty 检测。`JSSH_OTTY_SHELL_INTEGRATION=0` 或 `1` 覆盖配置。
+
+进入远程 Bash 后稍等再敲命令，好让当前会话注入跑完。注入会回显一条命令，随后的 prompt 外观不变。
+
+持久化（需显式打开 `otty_shell_install`）在 `~/.bashrc` 里写入：
+
+```bash
+# >>> JSSH OTTY SHELL INTEGRATION >>>
+# ...
+# <<< JSSH OTTY SHELL INTEGRATION <<<
+```
+
+备份文件是 `~/.bashrc.jssh-otty.bak`。卸载：删掉这两行标记之间的块，或从备份恢复。不要默认在生产机上开持久化。
+
+限制：没有 TOTP、关掉 `totp_auto`、或没有 TTY 时走普通 `ssh`，当前会话无法注入。SFTP 不注入。其他终端默认不注入。口令提示出现得很晚时，注入命令可能被当成口令，这时关掉自动注入，登录后再手动 `source` 上面的块。
+
 ## 命令
 
 | 命令 | 作用 |
@@ -133,6 +161,7 @@ zsh 补全：把 `scripts/completions/_jssh` 放进 `$fpath` 里的一个目录�
 | 没有系统账号 | 在 JumpServer 确认名称后设 `sftp.account_overrides` |
 | fzf missing | `brew install fzf` |
 | Otty Ctrl+F 没有分屏 | `jssh doctor` 看 `otty_cli` / `otty_sftp_split`。`JSSH_OTTY=0` 会关掉分屏 |
+| Otty 点光标不能跳到输入区 | `jssh doctor` 看 `otty_shell_integration_active`。进入 Bash 后稍等。不要整段替换 `PS1` |
 
 ## 测试
 

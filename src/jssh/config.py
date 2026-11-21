@@ -49,6 +49,8 @@ class Config:
     path_overrides: dict[str, str]
     account_overrides: dict[str, list[str]]
     interactive_fallback: bool
+    otty_shell_integration: str
+    otty_shell_install: bool
     tls_verify: bool | str
     timeout: float
     retries: int
@@ -99,6 +101,7 @@ def parse_config(raw: dict[str, Any], resolved: Path) -> Config:
     search = _mapping(raw, "search")
     sftp = _mapping(raw, "sftp")
     ssh = _mapping(raw, "ssh")
+    terminal = _mapping(raw, "terminal")
     tls = _mapping(raw, "tls")
     http = _mapping(raw, "http")
 
@@ -159,6 +162,8 @@ def parse_config(raw: dict[str, Any], resolved: Path) -> Config:
         ssh_options = tuple(str(item) for item in raw_opts)
     else:
         ssh_options = DEFAULT_SSH_OPTIONS
+    osc_mode = _otty_shell_mode(terminal.get("otty_shell_integration", "auto"))
+    osc_install = bool(terminal.get("otty_shell_install", False))
     return Config(
         api_url=api_url,
         ssh_host=ssh_host,
@@ -189,6 +194,8 @@ def parse_config(raw: dict[str, Any], resolved: Path) -> Config:
         path_overrides={str(k): str(v) for k, v in path_overrides.items()},
         account_overrides=accounts,
         interactive_fallback=bool(ssh.get("interactive_fallback", True)),
+        otty_shell_integration=osc_mode,
+        otty_shell_install=osc_install,
         tls_verify=verify,
         timeout=float(http.get("timeout") or 15),
         retries=int(http.get("retries") or 3),
@@ -233,6 +240,10 @@ def public_config(cfg: Config) -> dict[str, Any]:
             "totp_prompts": list(cfg.totp_prompts),
             "options": list(cfg.ssh_options),
         },
+        "terminal": {
+            "otty_shell_integration": cfg.otty_shell_integration,
+            "otty_shell_install": cfg.otty_shell_install,
+        },
         "tls": {"verify": cfg.tls_verify if isinstance(cfg.tls_verify, bool) else "ca_bundle"},
     }
 
@@ -242,6 +253,19 @@ def _mapping(raw: dict[str, Any], key: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ConfigError(f"{key} must be a mapping")
     return value
+
+
+def _otty_shell_mode(value: object) -> str:
+    if isinstance(value, bool):
+        return "on" if value else "off"
+    text = str(value).strip().lower() or "auto"
+    if text in {"true", "1", "yes", "on"}:
+        return "on"
+    if text in {"false", "0", "no", "off"}:
+        return "off"
+    if text == "auto":
+        return "auto"
+    raise ConfigError("terminal.otty_shell_integration must be auto, true, or false")
 
 
 def _optional_secret(auth: dict[str, Any], key: str) -> str | None:

@@ -12,6 +12,7 @@ from jssh.secrets import credential_presence, load_access_key, load_totp_secret
 from jssh.ui.fzf import require_fzf
 from jssh.connectors.otty import OttyOn
 from jssh.connectors import otty as otty_term
+from jssh.connectors.otty_osc133 import shell_integration_enabled
 
 
 def doctor(cfg: Config | None, *, probe: bool = False) -> int:
@@ -62,6 +63,12 @@ def doctor(cfg: Config | None, *, probe: bool = False) -> int:
         print("otty_sftp_split: on")
     else:
         print(f"otty_sftp_split: {plan.reason}")
+    if cfg is not None:
+        print(f"otty_shell_integration: {cfg.otty_shell_integration}")
+        print(f"otty_shell_integration_active: {'on' if shell_integration_enabled(cfg) else 'off'}")
+        print(f"otty_shell_install: {'on' if cfg.otty_shell_install else 'off'}")
+    else:
+        print(f"otty_shell_integration_active: {'on' if shell_integration_enabled(None) else 'off'}")
     if cfg and shutil.which("fzf"):
         try:
             require_fzf()

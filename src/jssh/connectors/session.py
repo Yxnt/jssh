@@ -14,7 +14,8 @@ from pathlib import Path
 import pexpect
 
 from jssh.config import Config
-from jssh.connectors.otty import OttyOn, OttySession, open_sftp_sidecar, otty_split_plan
+from jssh.connectors.otty import OttyOn, OttySession, is_password_prompt, open_sftp_sidecar, otty_split_plan
+from jssh.connectors.otty_osc133 import Osc133Injector, shell_integration_enabled
 from jssh.connectors.terminal_tab import can_open_tab
 from jssh.connectors.warp import in_warp
 from jssh.errors import JsshError
@@ -70,7 +71,10 @@ def run_gateway(cfg: Config, argv: list[str], login: KokoLogin | None = None) ->
     title = f"{login.hostname} / {login.account_name}" if login else None
     otty.start(title)
     try:
+        want_osc133 = shell_integration_enabled(cfg)
         if not cfg.totp_auto:
+            if want_osc133:
+                print("warning: Otty shell integration needs MFA auto-fill. totp_auto is off.", flush=True)
             return _run_plain(argv)
         secret = load_totp_secret(cfg)
         if secret is None:
@@ -79,6 +83,8 @@ def run_gateway(cfg: Config, argv: list[str], login: KokoLogin | None = None) ->
                 "New terminal windows do not inherit exports. Run: jssh secrets totp-file",
                 flush=True,
             )
+            if want_osc133:
+                print("warning: Otty shell integration skipped without the MFA session.", flush=True)
             return _run_plain(argv)
         if not sys.stdin.isatty() or not sys.stdout.isatty():
             print("warning: no TTY. MFA auto-fill disabled.", flush=True)
@@ -92,7 +98,15 @@ def run_gateway(cfg: Config, argv: list[str], login: KokoLogin | None = None) ->
                 algorithm=cfg.totp_algorithm,
             )
 
-        return run_with_mfa(argv, code, cfg.totp_prompts, login, otty)
+        return run_with_mfa(
+            argv,
+            code,
+            cfg.totp_prompts,
+            login,
+            otty,
+            osc133=want_osc133,
+            osc133_persist=cfg.otty_shell_install,
+        )
     finally:
         otty.close()
 
@@ -127,6 +141,8 @@ def run_with_mfa(
     prompts: tuple[str, ...],
     login: KokoLogin | None = None,
     otty: OttySession | None = None,
+    osc133: Osc133Injector | bool | None = None,
+    osc133_persist: bool = False,
 ) -> int:
     rows, cols = pty_dimensions()
     child = pexpect.spawn(
@@ -135,7 +151,7 @@ def run_with_mfa(
         timeout=None,
         dimensions=(rows, cols),
     )
-    driver = KokoDriver(child, code, prompts, login, otty)
+    driver = KokoDriver(child, code, prompts, login, otty, osc133, osc133_persist)
     previous = signal.getsignal(signal.SIGWINCH)
 
     def on_winch(signum, frame) -> None:
@@ -152,7 +168,7 @@ def run_with_mfa(
     try:
         child.interact(
             output_filter=driver.filter_output,
-            input_filter=_sftp_hotkey(login) if login else None,
+            input_filter=driver.filter_input,
         )
     except KeyboardInterrupt:
         if child.isalive():
@@ -161,6 +177,7 @@ def run_with_mfa(
     except OSError as exc:
         raise JsshError("SSH session I/O failed") from exc
     finally:
+        driver.close()
         signal.signal(signal.SIGWINCH, previous)
     if child.isalive():
         child.wait()
@@ -288,6 +305,8 @@ class KokoDriver:
         prompts: tuple[str, ...],
         login: KokoLogin | None,
         status: OttySession | None = None,
+        osc133: Osc133Injector | bool | None = None,
+        osc133_persist: bool = False,
     ) -> None:
         self._child = child
         self._code = code
@@ -298,6 +317,24 @@ class KokoDriver:
         self._phase = Phase.MFA
         self._binary = False
         self._entered_session = False
+        self._input = _sftp_hotkey(login) if login else None
+        if isinstance(osc133, Osc133Injector):
+            self._osc133 = osc133
+        elif osc133:
+            self._osc133 = Osc133Injector(self._send, persist=osc133_persist)
+        else:
+            self._osc133 = None
+
+    def close(self) -> None:
+        if self._osc133 is not None:
+            self._osc133.close()
+
+    def filter_input(self, data: bytes) -> bytes:
+        if self._osc133 is not None:
+            self._osc133.note_input(data)
+        if self._input is None:
+            return data
+        return self._input(data)
 
     def filter_output(self, data: str | bytes) -> str | bytes:
         gateway = self._phase in {Phase.MFA, Phase.MENU, Phase.AFTER_SEARCH}
@@ -316,6 +353,11 @@ class KokoDriver:
             self._on_after_search()
         elif self._phase is Phase.SESSION:
             self._on_session()
+        if self._osc133 is not None:
+            self._osc133.observe(
+                gateway=self._in_koko_ui(),
+                password=is_password_prompt(text),
+            )
         if self._status is None:
             return data
         at_gateway = self._phase in {Phase.MFA, Phase.MENU, Phase.AFTER_SEARCH}
@@ -325,6 +367,26 @@ class KokoDriver:
         if self._binary:
             return bytes(data) + osc
         return data + osc.decode("ascii")
+
+    def _in_koko_ui(self) -> bool:
+        if self._phase in {Phase.MFA, Phase.MENU, Phase.DONE}:
+            return True
+        plain = _plain(self._buf)
+        if self._phase is Phase.AFTER_SEARCH:
+            if not plain.strip():
+                return True
+            if "ID>" in plain or "Opt>" in plain or "[Host]>" in plain:
+                return True
+            if any(prompt in plain for prompt in self._prompts):
+                return True
+            if _has_header(plain, _ASSET_HEADERS) or _has_header(plain, _ACCOUNT_HEADERS):
+                return True
+            return False
+        if not plain.strip():
+            return True
+        if "Opt>" in plain or "[Host]>" in plain:
+            return True
+        return False
 
     def _on_mfa(self) -> None:
         plain = _plain(self._buf)

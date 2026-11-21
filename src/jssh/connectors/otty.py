@@ -45,6 +45,10 @@ def in_otty(env: Mapping[str, str] | None = None) -> bool:
     return environ.get("TERM_PROGRAM") == "otty"
 
 
+def is_password_prompt(text: str) -> bool:
+    return bool(_PASSWORD_PROMPT.search(text))
+
+
 def find_otty_cli(*, which: Callable[[str], str | None] | None = None, bundled: Path = _BUNDLED_OTTY) -> str | None:
     lookup = shutil.which if which is None else which
     found = lookup("otty")

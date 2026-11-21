@@ -54,6 +54,15 @@ ssh:
   #   - HostKeyAlgorithms=+ssh-rsa
   #   - PubkeyAcceptedAlgorithms=+ssh-rsa
 
+
+terminal:
+  # auto: enable OSC 133 A/B marks only inside Otty.
+  # true / false: force on or off in any terminal.
+  otty_shell_integration: auto
+  # If true, also append a managed block to remote ~/.bashrc (backs up first).
+  # Default false: current-session wrap only, no server file changes.
+  otty_shell_install: false
+
 tls:
   verify: true
   # ca_bundle: /path/to/internal-ca.pem
