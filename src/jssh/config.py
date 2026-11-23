@@ -51,6 +51,10 @@ class Config:
     interactive_fallback: bool
     otty_shell_integration: str
     otty_shell_install: bool
+    otty_sftp_layout: str
+    otty_sftp_direction: str
+    otty_sftp_size: int
+    otty_sftp_no_focus: bool
     tls_verify: bool | str
     timeout: float
     retries: int
@@ -164,6 +168,10 @@ def parse_config(raw: dict[str, Any], resolved: Path) -> Config:
         ssh_options = DEFAULT_SSH_OPTIONS
     osc_mode = _otty_shell_mode(terminal.get("otty_shell_integration", "auto"))
     osc_install = bool(terminal.get("otty_shell_install", False))
+    layout = _otty_sftp_layout(terminal.get("otty_sftp_layout", "split"))
+    direction = _otty_sftp_direction(terminal.get("otty_sftp_direction", "right"))
+    size = _otty_sftp_size(terminal.get("otty_sftp_size", 40))
+    no_focus = bool(terminal.get("otty_sftp_no_focus", True))
     return Config(
         api_url=api_url,
         ssh_host=ssh_host,
@@ -196,6 +204,10 @@ def parse_config(raw: dict[str, Any], resolved: Path) -> Config:
         interactive_fallback=bool(ssh.get("interactive_fallback", True)),
         otty_shell_integration=osc_mode,
         otty_shell_install=osc_install,
+        otty_sftp_layout=layout,
+        otty_sftp_direction=direction,
+        otty_sftp_size=size,
+        otty_sftp_no_focus=no_focus,
         tls_verify=verify,
         timeout=float(http.get("timeout") or 15),
         retries=int(http.get("retries") or 3),
@@ -243,6 +255,10 @@ def public_config(cfg: Config) -> dict[str, Any]:
         "terminal": {
             "otty_shell_integration": cfg.otty_shell_integration,
             "otty_shell_install": cfg.otty_shell_install,
+            "otty_sftp_layout": cfg.otty_sftp_layout,
+            "otty_sftp_direction": cfg.otty_sftp_direction,
+            "otty_sftp_size": cfg.otty_sftp_size,
+            "otty_sftp_no_focus": cfg.otty_sftp_no_focus,
         },
         "tls": {"verify": cfg.tls_verify if isinstance(cfg.tls_verify, bool) else "ca_bundle"},
     }
@@ -266,6 +282,30 @@ def _otty_shell_mode(value: object) -> str:
     if text == "auto":
         return "auto"
     raise ConfigError("terminal.otty_shell_integration must be auto, true, or false")
+
+
+def _otty_sftp_layout(value: object) -> str:
+    text = str(value).strip().lower() or "split"
+    if text in {"split", "tab"}:
+        return text
+    raise ConfigError("terminal.otty_sftp_layout must be split or tab")
+
+
+def _otty_sftp_direction(value: object) -> str:
+    text = str(value).strip().lower() or "right"
+    if text in {"right", "left", "up", "down"}:
+        return text
+    raise ConfigError("terminal.otty_sftp_direction must be right, left, up, or down")
+
+
+def _otty_sftp_size(value: object) -> int:
+    try:
+        size = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ConfigError("terminal.otty_sftp_size must be an integer 10-90") from exc
+    if size < 10 or size > 90:
+        raise ConfigError("terminal.otty_sftp_size must be an integer 10-90")
+    return size
 
 
 def _optional_secret(auth: dict[str, Any], key: str) -> str | None:

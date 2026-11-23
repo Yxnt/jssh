@@ -56,12 +56,20 @@ ssh:
 
 
 terminal:
-  # auto: enable OSC 133 A/B marks only inside Otty.
+  # auto: enable OSC 133 A/B/C/D and OSC 7 only inside Otty.
   # true / false: force on or off in any terminal.
   otty_shell_integration: auto
   # If true, also append a managed block to remote ~/.bashrc (backs up first).
-  # Default false: current-session wrap only, no server file changes.
+  # Default false: current-session install only, no server file changes.
   otty_shell_install: false
+  # Ctrl-F SFTP sidecar in Otty: split (default) or tab.
+  otty_sftp_layout: split
+  # pane split direction when layout is split: right, left, up, or down.
+  otty_sftp_direction: right
+  # pane split size, integer 10-90. Default 40.
+  otty_sftp_size: 40
+  # Keep focus on the SSH session when opening the SFTP sidecar. Default true.
+  otty_sftp_no_focus: true
 
 tls:
   verify: true

@@ -9,10 +9,11 @@ from jssh import __version__
 from jssh.cache import clear_cache, load_assets, load_recent
 from jssh.complete import account_tokens, host_tokens
 from jssh.config import Config, load_config, public_config
+from jssh.connectors.otty import report_status
 from jssh.connectors.sftp import run_sftp
 from jssh.connectors.ssh import run_ssh
 from jssh.diagnostics import doctor
-from jssh.errors import Cancelled, JsshError
+from jssh.errors import AuthError, Cancelled, JsshError
 from jssh.models.asset import Account, Asset
 from jssh.secrets import load_totp_secret, store_keychain, store_totp_file
 from jssh.totp import totp_code
@@ -40,6 +41,10 @@ def main(argv: list[str] | None = None) -> int:
         return 130
     except Cancelled:
         return 130
+    except AuthError as exc:
+        report_status("error", msg=str(exc) or "Authentication failed")
+        print(f"jssh: {exc}", file=sys.stderr)
+        return 1
     except JsshError as exc:
         print(f"jssh: {exc}", file=sys.stderr)
         return 1
@@ -115,7 +120,16 @@ def _cfg(args: argparse.Namespace) -> Config:
 
 def _cmd_sync(args: argparse.Namespace) -> int:
     cfg = _cfg(args)
-    profile, assets = sync_assets(cfg)
+    report_status("working", msg="Syncing assets")
+    try:
+        profile, assets = sync_assets(cfg)
+    except AuthError:
+        raise
+    except Exception as exc:
+        message = str(exc) if isinstance(exc, JsshError) and str(exc) else "Asset sync failed"
+        report_status("error", msg=message)
+        raise
+    report_status("done", msg=f"Synced {len(assets)} assets")
     print(f"synced {len(assets)} granted assets for {profile.username}")
     return 0
 
@@ -308,7 +322,7 @@ def _run_action(cfg: Config, action: str, asset: Asset, account: Account) -> int
             return 0
         print(f"SFTP path {target.path} ({target.source})", flush=True)
         remember_use(cfg, asset, account, "sftp")
-        return run_sftp(cfg, target)
+        return run_sftp(cfg, target, asset_name=asset.hostname)
     if action in {"ssh", "copy-ssh"}:
         argv = ssh_argv(cfg)
         if action == "copy-ssh":

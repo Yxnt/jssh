@@ -15,6 +15,6 @@ def require_sftp() -> str:
     return path
 
 
-def run_sftp(cfg: Config, target: SftpTarget) -> int:
+def run_sftp(cfg: Config, target: SftpTarget, *, asset_name: str | None = None) -> int:
     require_sftp()
-    return run_gateway(cfg, sftp_argv(cfg, target))
+    return run_gateway(cfg, sftp_argv(cfg, target), asset_name=asset_name)

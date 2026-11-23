@@ -10,7 +10,7 @@ from jssh.config import Config, public_config
 from jssh.errors import ApiError, AuthError, ConfigError, JsshError
 from jssh.secrets import credential_presence, load_access_key, load_totp_secret
 from jssh.ui.fzf import require_fzf
-from jssh.connectors.otty import OttyOn
+from jssh.connectors.otty import OttyOn, report_status
 from jssh.connectors import otty as otty_term
 from jssh.connectors.otty_osc133 import shell_integration_enabled
 
@@ -67,6 +67,10 @@ def doctor(cfg: Config | None, *, probe: bool = False) -> int:
         print(f"otty_shell_integration: {cfg.otty_shell_integration}")
         print(f"otty_shell_integration_active: {'on' if shell_integration_enabled(cfg) else 'off'}")
         print(f"otty_shell_install: {'on' if cfg.otty_shell_install else 'off'}")
+        print(f"otty_sftp_layout: {cfg.otty_sftp_layout}")
+        print(f"otty_sftp_direction: {cfg.otty_sftp_direction}")
+        print(f"otty_sftp_size: {cfg.otty_sftp_size}")
+        print(f"otty_sftp_no_focus: {'on' if cfg.otty_sftp_no_focus else 'off'}")
     else:
         print(f"otty_shell_integration_active: {'on' if shell_integration_enabled(None) else 'off'}")
     if cfg and shutil.which("fzf"):
@@ -105,6 +109,7 @@ def _probe(cfg: Config) -> bool:
             assets = client.get_json(MY_ASSETS_TREE)
             _report_shape("users/assets", assets)
     except AuthError as exc:
+        report_status("error", msg=str(exc) or "Authentication failed")
         print(f"probe auth failed: {exc}")
         return False
     except ApiError as exc:

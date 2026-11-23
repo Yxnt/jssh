@@ -14,8 +14,17 @@ from pathlib import Path
 import pexpect
 
 from jssh.config import Config
-from jssh.connectors.otty import OttyOn, OttySession, is_password_prompt, open_sftp_sidecar, otty_split_plan
-from jssh.connectors.otty_osc133 import Osc133Injector, shell_integration_enabled
+from jssh.connectors.otty import (
+    OttyLayout,
+    OttyOn,
+    OttySession,
+    SidecarResult,
+    is_password_prompt,
+    open_sftp_sidecar,
+    otty_split_plan,
+    pane_send_text,
+)
+from jssh.connectors.otty_osc133 import Osc133Injector, parse_osc7_cwd, shell_integration_enabled
 from jssh.connectors.terminal_tab import can_open_tab
 from jssh.connectors.warp import in_warp
 from jssh.errors import JsshError
@@ -47,14 +56,22 @@ class Phase(enum.Enum):
     DONE = "done"
 
 
-def run_gateway(cfg: Config, argv: list[str], login: KokoLogin | None = None) -> int:
+def run_gateway(
+    cfg: Config,
+    argv: list[str],
+    login: KokoLogin | None = None,
+    *,
+    asset_name: str | None = None,
+) -> int:
     argv = resolve_gateway_argv(argv)
     print("starting: " + " ".join(argv), flush=True)
+    layout = otty_layout(cfg)
     if login:
         print(f"SFTP:  {sftp_quick_command(login)}", flush=True)
         if isinstance(otty_split_plan(), OttyOn):
+            where = "a new tab" if layout.mode == "tab" else "a split pane"
             print(
-                "In this SSH session, Ctrl-F opens SFTP in a split pane. TOTP is never copied.",
+                f"In this SSH session, Ctrl-F opens SFTP in {where}. TOTP is never copied.",
                 flush=True,
             )
         elif in_warp() or can_open_tab():
@@ -68,8 +85,9 @@ def run_gateway(cfg: Config, argv: list[str], login: KokoLogin | None = None) ->
                 flush=True,
             )
     otty = OttySession()
-    title = f"{login.hostname} / {login.account_name}" if login else None
-    otty.start(title)
+    title = f"{login.hostname} / {login.account_name}" if login else asset_name
+    host = login.hostname if login else asset_name
+    otty.start(title, asset_name=host)
     try:
         want_osc133 = shell_integration_enabled(cfg)
         if not cfg.totp_auto:
@@ -106,6 +124,7 @@ def run_gateway(cfg: Config, argv: list[str], login: KokoLogin | None = None) ->
             otty,
             osc133=want_osc133,
             osc133_persist=cfg.otty_shell_install,
+            layout=layout,
         )
     finally:
         otty.close()
@@ -143,6 +162,7 @@ def run_with_mfa(
     otty: OttySession | None = None,
     osc133: Osc133Injector | bool | None = None,
     osc133_persist: bool = False,
+    layout: OttyLayout | None = None,
 ) -> int:
     rows, cols = pty_dimensions()
     child = pexpect.spawn(
@@ -151,7 +171,7 @@ def run_with_mfa(
         timeout=None,
         dimensions=(rows, cols),
     )
-    driver = KokoDriver(child, code, prompts, login, otty, osc133, osc133_persist)
+    driver = KokoDriver(child, code, prompts, login, otty, osc133, osc133_persist, layout=layout)
     previous = signal.getsignal(signal.SIGWINCH)
 
     def on_winch(signum, frame) -> None:
@@ -191,6 +211,29 @@ def sftp_quick_command(login: KokoLogin) -> str:
     return f"jssh sftp {login.hostname} --account {login.account_name}"
 
 
+def otty_layout(cfg: Config) -> OttyLayout:
+    return OttyLayout(
+        mode="tab" if cfg.otty_sftp_layout == "tab" else "split",
+        direction=cfg.otty_sftp_direction,
+        size=cfg.otty_sftp_size,
+        no_focus=cfg.otty_sftp_no_focus,
+    )
+
+
+def sftp_cd_text(path: str) -> str:
+    if any(ch in path for ch in ' \t\n\r"\'\\'):
+        escaped = path.replace("\\", "\\\\").replace('"', '\\"')
+        return f'cd "{escaped}"'
+    return f"cd {path}"
+
+
+@dataclass
+class SidecarTrack:
+    cwd: str | None = None
+    result: SidecarResult | None = None
+    cli: str | None = None
+
+
 def _sftp_hint_overlay(clear: bool, kind: str = "copied") -> bytes:
     text = _SFTP_PANE_HINT if kind == "pane" else _SFTP_HINT_TEXT
     _, cols = pty_dimensions()
@@ -218,18 +261,45 @@ def _flash_sftp_hint(kind: str) -> None:
     _sftp_hint_timer.start()
 
 
-def _sftp_hotkey(login: KokoLogin) -> Callable[[bytes], bytes]:
+def _sftp_hotkey(
+    login: KokoLogin,
+    *,
+    layout: OttyLayout | None = None,
+    track: SidecarTrack | None = None,
+) -> Callable[[bytes], bytes]:
+    opts = layout or OttyLayout()
+    state = track if track is not None else SidecarTrack()
+
     def input_filter(data: bytes) -> bytes:
         if b"\x06" not in data:
             return data
-        kind = open_sftp_sidecar(
+        result = open_sftp_sidecar(
             sftp_quick_command(login),
             title=f"sftp {login.hostname}",
+            layout=opts,
         )
-        _flash_sftp_hint(kind)
+        state.result = result
+        if result.kind == "pane":
+            plan = otty_split_plan()
+            if isinstance(plan, OttyOn):
+                state.cli = plan.cli
+            sync_sftp_cwd(state)
+        _flash_sftp_hint(result.kind)
         return data.replace(b"\x06", b"")
 
     return input_filter
+
+
+def sync_sftp_cwd(track: SidecarTrack, path: str | None = None) -> bool:
+    cwd = path if path is not None else track.cwd
+    if cwd:
+        track.cwd = cwd
+    if not cwd or not track.cli or track.result is None:
+        return False
+    pane_id = track.result.pane_id
+    if not pane_id:
+        return False
+    return pane_send_text(track.cli, pane_id, sftp_cd_text(cwd))
 
 
 def pick_row_id(buf: str, name: str, username: str = "") -> str | None:
@@ -307,21 +377,31 @@ class KokoDriver:
         status: OttySession | None = None,
         osc133: Osc133Injector | bool | None = None,
         osc133_persist: bool = False,
+        layout: OttyLayout | None = None,
+        track: SidecarTrack | None = None,
     ) -> None:
         self._child = child
         self._code = code
         self._prompts = prompts
         self._login = login
         self._status = status
+        self._layout = layout or OttyLayout()
+        self._track = track if track is not None else SidecarTrack()
         self._buf = ""
+        self._osc7_tail = ""
         self._phase = Phase.MFA
         self._binary = False
         self._entered_session = False
-        self._input = _sftp_hotkey(login) if login else None
+        self._input = (
+            _sftp_hotkey(login, layout=self._layout, track=self._track) if login else None
+        )
+        hostname = login.hostname if login else ""
         if isinstance(osc133, Osc133Injector):
             self._osc133 = osc133
         elif osc133:
-            self._osc133 = Osc133Injector(self._send, persist=osc133_persist)
+            self._osc133 = Osc133Injector(
+                self._send, persist=osc133_persist, hostname=hostname
+            )
         else:
             self._osc133 = None
 
@@ -358,6 +438,7 @@ class KokoDriver:
                 gateway=self._in_koko_ui(),
                 password=is_password_prompt(text),
             )
+        self._note_remote_cwd(text)
         if self._status is None:
             return data
         at_gateway = self._phase in {Phase.MFA, Phase.MENU, Phase.AFTER_SEARCH}
@@ -367,6 +448,22 @@ class KokoDriver:
         if self._binary:
             return bytes(data) + osc
         return data + osc.decode("ascii")
+
+    def _note_remote_cwd(self, text: str) -> None:
+        if self._login is None or self._in_koko_ui():
+            self._osc7_tail = ""
+            return
+        chunk = self._osc7_tail + text
+        self._osc7_tail = chunk[-64:]
+        path = parse_osc7_cwd(chunk, self._login.hostname)
+        if not path or path == self._track.cwd:
+            if path:
+                self._track.cwd = path
+            return
+        previous = self._track.cwd
+        self._track.cwd = path
+        if previous is not None or (self._track.result and self._track.result.pane_id):
+            sync_sftp_cwd(self._track, path)
 
     def _in_koko_ui(self) -> bool:
         if self._phase in {Phase.MFA, Phase.MENU, Phase.DONE}:
