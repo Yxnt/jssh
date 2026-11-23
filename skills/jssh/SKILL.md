@@ -31,6 +31,8 @@ Read `README.md` for install, config, and user-facing behavior. This skill is th
 
 ## Silent OSC 133 inject
 
+Full mechanism, timing, and Bash/zsh hook behavior: `docs/otty-ps1-inject.md`.
+
 jssh sends hook scripts through pexpect `sendline`. Those commands must not appear as a dense blob in the terminal.
 
 - Prelude: `ECHO_OFF_PRELUDE` (`stty -echo`, then erase that command line).

@@ -100,7 +100,7 @@ SFTP 用本机交互式 `sftp`，不传 `-b`。`exit` 后还在原来的 shell�
 
 ## Otty Shell Integration
 
-Otty 的 Cursor Click-to-Move、命令完成标记和远程路径，需要目标机 shell 发出 OSC 133 和 OSC 7。jssh 走 pexpect 调系统 `ssh`，不会经过 Otty 的 `ssh` wrapper，KoKo 也不会给目标机装这些标记。
+Otty 的 Cursor Click-to-Move、命令完成标记和远程路径，需要目标机 shell 发出 OSC 133 和 OSC 7。jssh 走 pexpect 调系统 `ssh`，不会经过 Otty 的 `ssh` wrapper，KoKo 也不会给目标机装这些标记。详细机制见 [docs/otty-ps1-inject.md](docs/otty-ps1-inject.md)。
 
 在 Otty 里用 jssh SSH（且 MFA 自动填可用）时，资产登录完成后会在当前 Bash 或 zsh 会话安装 hook。逻辑对齐 Otty 安装包里的 `ssh-marks.sh`，但不在目标机写临时目录，也不走 Otty 的 ssh bootstrap。
 
@@ -201,4 +201,4 @@ python3 -m pytest
 
 ## 给 AI agent
 
-改这个仓库前先读 [`skills/jssh/SKILL.md`](skills/jssh/SKILL.md)。
+改这个仓库前先读 [`skills/jssh/SKILL.md`](skills/jssh/SKILL.md)。注入 PS1 的详细说明见 [`docs/otty-ps1-inject.md`](docs/otty-ps1-inject.md)。
